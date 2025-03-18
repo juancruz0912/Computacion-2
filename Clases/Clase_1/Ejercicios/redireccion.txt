@@ -1,1 +1,2 @@
 bash: comando_inexistente: orden no encontrada
+agregando texto
