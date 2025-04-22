@@ -1,0 +1,10 @@
+Los pipes son descriptores de archivos, por lo para crearse tienen que ser entre padre e hijo, para que este herede los 
+mismos datos del padre y tenga el mismo descriptor de archivo, asi pueden comunicarse
+
+las colas es mediante un archivo en el discord, donde el kernel se encarga de gestionar el flujo de informacion en ese archivo
+
+los archivos fifos son como las colas pero con nombre, donde no necesito que los procesos que se comunican sean padre-hijo, pueden ser 
+de diferentes terminales.
+
+la principal diferencia entre un pipe anónimo y un FIFO es que este ultimo tienen un nombre persistente, lo que me permite que 
+el archivo persista aunque los procesos que estaban escribiendo se terminen y ademas se puede usar entre procesos que no esten relacionados
