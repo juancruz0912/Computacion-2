@@ -60,7 +60,7 @@ def main():
 
         i += 1
 
-        pid1 = os.fork()
+        pid1 = os.fork() # Modificaar esto para que varias las transacciones se vayan enviando y se vayan verificando varias al "mismo tiempo"
         if pid1 == 0:  # Proceso hijo 1: crear_transaccion
             os.close(r1)  # Cerrar extremo de lectura del primer pipe
             os.close(r2)  # Cerrar extremos no utilizados
