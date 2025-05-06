@@ -1,0 +1,9 @@
+Señales
+
+La informacion que se transmite es simple, depende el tipo de señal y no lo que mandan. 
+Es asincrona, el otro proceso no espera a que el otro le mande la señal
+
+El fork, no es tanto un hijo, si no una rama de ese proceso, manteniendo el mismo espacio de memoria mientras no se modifiquen las 
+variables de ese espacio, al modificarse tiene un nuevo espacio. 
+Donde fork, es una llamada a sistema donde es un alias para 'clon'
+

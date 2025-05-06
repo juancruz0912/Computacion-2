@@ -1,0 +1,18 @@
+##¿Qué es la programación concurrente?
+
+Programación concurrente es una técnica que permite ejecutar múltiples tareas aparentemente al mismo tiempo. 
+Esto puede lograrse usando procesos o hilos (threads).
+
+La concurrencia no siempre implica paralelismo. Puedes tener múltiples tareas concurrentes sin que se ejecuten al mismo tiempo 
+si el sistema cambia de tarea rápidamente (como una fila de supermercado donde se atiende rápido a cada persona).
+
+En Python, el paralelismo real se logra usando procesos, no hilos, debido al GIL 
+(Global Interpreter Lock), que restringe la ejecución simultánea de threads en CPython.
+
+El fork se hace en el star(), no en al creacion de la 'clase' del procesos. Es como programacion orientada a objetos, en el start creo una instancia
+
+ls -l /proc/<PID>/fd
+
+ES mejor usar whit lock que el acquire y release ya que en el caso de haber un error with librea el recurso de forma inmediata.
+
+Value y Array son variables globales que pueden usar cualquier proceso
