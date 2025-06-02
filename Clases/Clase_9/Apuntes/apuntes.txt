@@ -1,0 +1,42 @@
+#Concurrencia
+
+# Locks
+Solo un proceso puede entrar a una seccion critica
+lock.acquire() y lock.release() --> Whith Lock:
+
+# Rlock
+permite a un mismo proceso adquirir el lock varias veces
+lock.acquire() y lock.release()
+
+# Semáforos
+Se inicia con un contador interno con valor N, el cual nos dira cuantos procesos pueden entrar a la seccion critica
+
+sem.acquire() decrementa el valor del semaforo
+sem.release() incrementa el valor del semaforo
+
+# BoundedSemaphore
+Verifica que se ha hecho la misma cantidad de release que acquiere, mantiene consistencia en el contador
+
+# Condicionales
+Espera hasta que una condicion se haya cumplido
+wait() el procesos libre el lock y se bloquea hasta que se cumpla la condicion
+notify() libera a un proceso bloqueado
+notify_all() libera a todos los procesos bloqueados
+
+# Evento
+Es un objeto que puede estar en dos estados: set o clear
+set() cambia el estado a set
+is_set() retorna True si el estado es set
+wait() espera hasta que el estado sea set
+clear() cambia el estado a clear
+
+# Barrier
+Espera a que un numero N de procesos lleguen a un punto sincronizado
+barrier.wait() espera a que N procesos lleguen
+
+#Queue
+Es una estructura FIFO 
+put() agrega un elemento a la cola
+get() retira un elemento de la cola
+full() retorna True si la cola esta llena
+empty() retorna True si la cola esta vacia
