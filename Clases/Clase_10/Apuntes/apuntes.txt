@@ -1,0 +1,31 @@
+# Hilos
+Es la unidad minima de ejecucion que puede ser gestionada por el sistema operativo
+Es una secuencia de instrucciones dentrod de un programa que se ejecutan en paralelo
+con otras secuencias de instrucciones
+
+## Carcteristicas
+- Comparten memoria
+- Menos costosos en termnos de recursos
+- Ejecucion concurrente o paralela
+
+## Beneficios
+- Rendimiento: los hilos pueden ejecutarse en distintos nucleos 
+- Mejor Respuesta: En aplicacion interactivas, me permite manejar la interaccion
+con un hilo y asi no evitar el flujo del resto se bloquee.
+- Eficiencia: Al compartir memoria y otros recursos, el costo de comunicacion es menor
+
+# Arquitectura de Hilos
+
+## Hilos a nivel usuario
+- Mucho mas rapidos
+- Planificacion personalizable
+- Portabilidad: se puede implementar en cualquier SO
+- Si un hilo hace una llamada a sistema, se bloquea todo (no conviene I/O)
+- No se puede ejecutar en paralelo con otros hilos
+
+## Hilos a nivel sistema
+- El kernel maneja los hilos
+- Comparten espacio de memoria
+- Cada hilo tiene su propio contexto de ejecucion
+- Se puede ejecutar en paralelo con otros hilos
+- Bloqueo eficiente de un solo hilo (no se bloquea todo) 
