@@ -18,8 +18,8 @@ sem.release() incrementa el valor del semaforo
 Verifica que se ha hecho la misma cantidad de release que acquiere, mantiene consistencia en el contador
 
 # Condicionales
-Espera hasta que una condicion se haya cumplido
-wait() el procesos libre el lock y se bloquea hasta que se cumpla la condicion
+Espera hasta que una condicion se haya cumplido. FUnciona con Lock
+wait() el procesos libera el lock y se bloquea hasta que se cumpla la condicion. Lo hace "dentro" del lock
 notify() libera a un proceso bloqueado
 notify_all() libera a todos los procesos bloqueados
 

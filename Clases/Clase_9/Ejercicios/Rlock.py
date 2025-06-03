@@ -1,6 +1,6 @@
 # Rlock con fibonacci
 
-from multiprocessing import Process ,Lock
+from multiprocessing import Process ,RLock
 import os
 
 def fibonacci(n):
@@ -15,7 +15,7 @@ def calcular_fibonacci(lock, id, n):
 
 if __name__ == '__main__':
     
-    lock = Lock()
+    lock = RLock()
     
     Procesos = [Process(target=calcular_fibonacci, args=(lock, i, i)) for i in range(5)]
 
