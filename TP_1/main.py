@@ -17,7 +17,7 @@ def generate_sample():
     return {
         "timestamp": datetime.now().isoformat(timespec='seconds'),
         "frecuencia": random.randint(60, 180),
-        "presion": [random.randint(110, 180), random.randint(70, 110)],
+        "presion": [random.randint(110, 180), random.randint(70, 110)], #presion sistólica/diastólica
         "oxigeno": random.randint(90, 100)
     }
 
@@ -36,7 +36,7 @@ def analyze_sample(tipe, child_pipe, queue):
         if tipe == "frecuencia":
             valor = data["frecuencia"]
         elif tipe == "presion":
-            valor = data["presion"][0]
+            valor = data["presion"][0] # analizamos la presion sistólica, la primera
         elif tipe == "oxigeno":
             valor = data["oxigeno"]
         else:
