@@ -13,6 +13,7 @@ To generate this message, Docker took the following steps:
  4. The Docker daemon streamed that output to the Docker client, which sent it
     to your terminal.
 
+
 ## Overlay
 Sistema de capas que juega con los permisos de escritura y lectura
 Donde yo solo interactuo solo con la capa de arriba y esta trabaja encima de las otras capas
@@ -21,11 +22,3 @@ Donde puedo compartir las capas de lectura (las capas inferiores, como la de los
 ## Imagen
 Es cada capa de solo lectura, donde yo construyo un contenedor en base a una imagen.
 Es un archivo inalterable
-
-# Docker Compose
-Me permite ejecutar varias aplicaciones con un solo comando. Hace una red de contenedores (servicios), asi puedo ejecutar el back, la db, etc. 
-
-docker compose up o docker compose build <programa_especifico (db, backend, frontend)>
-docker compose logs
-
-puertos: host:puerto/contenedor:puerto
