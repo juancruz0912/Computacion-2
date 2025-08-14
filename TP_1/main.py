@@ -103,17 +103,17 @@ def verificate_process(qf, qp, qo):
         # Verificar frecuencia < 200
         if r1["media"] >= 200:
             alerta = True
-            print(f"⚠️ ALERTA: Frecuencia fuera de rango ({r1['media']} >= 200)")
+            print(f"ALERTA: Frecuencia fuera de rango ({r1['media']} >= 200)")
         
         # Verificar 90 <= oxigeno <= 100
         if not (90 <= r3["media"] <= 100):
             alerta = True
-            print(f"⚠️ ALERTA: Oxígeno fuera de rango ({r3['media']} no está entre 90-100)")
+            print(f"ALERTA: Oxígeno fuera de rango ({r3['media']} no está entre 90-100)")
         
         # Verificar presión sistólica < 200
         if r2["media"] >= 200:
             alerta = True
-            print(f"⚠️ ALERTA: Presión sistólica fuera de rango ({r2['media']} >= 200)")
+            print(f"ALERTA: Presión sistólica fuera de rango ({r2['media']} >= 200)")
 
         # Calcular hash del bloque
         hash_bloque = hash_creator(prev_hash, datos, timestamp)
@@ -137,8 +137,8 @@ def verificate_process(qf, qp, qo):
         with open(BLOCKCHAIN_FILE, 'w') as f:
             json.dump(blockchain, f, indent=2)
 
-    print(f"\n✅ Blockchain completado con {len(blockchain)} bloques")
-    print(f"📁 Guardado en {BLOCKCHAIN_FILE}")
+    print(f"\nBlockchain completado con {len(blockchain)} bloques")
+    print(f"Guardado en {BLOCKCHAIN_FILE}")
 
 # ─────────────────────────────
 # Proceso principal
@@ -171,13 +171,12 @@ if __name__ == '__main__':
     verificator = Process(target=verificate_process, args=(queue_frecuencia, queue_presion, queue_oxigeno))
     verificator.start()
 
-    print("🚀 Iniciando generación de muestras biomédicas...")
-    print("📊 Generando 60 muestras (1 por segundo)...\n")
+    print("Generando 60 muestras (1 por segundo)...\n")
 
     # Enviar 60 muestras (1 por segundo)
     for i in range(N):
         sample = generate_sample()
-        print(f"📈 Muestra {i+1}/{N}: F={sample['frecuencia']}, P={sample['presion']}, O={sample['oxigeno']}")
+        print(f"Muestra {i+1}/{N}: F={sample['frecuencia']}, P={sample['presion']}, O={sample['oxigeno']}")
         
         for pipe in parent_pipes:
             pipe.send(sample) # se le envia la muestra a los analizadores
@@ -196,4 +195,4 @@ if __name__ == '__main__':
 
     verificator.join()
     
-    print("\n🏁 Procesamiento completado!")
+    print("\nProcesamiento completado!")

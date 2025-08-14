@@ -1,5 +1,5 @@
 REPORTE DE BLOCKCHAIN BIOMÉDICO
-    Fecha: 2025-08-05 01:02:03
+    Fecha: 2025-08-13 22:50:31
     
     ESTADÍSTICAS:
     - Total de bloques: 60
@@ -7,9 +7,9 @@ REPORTE DE BLOCKCHAIN BIOMÉDICO
     - Porcentaje de alertas: 0.0%
     
     PROMEDIOS:
-    - Frecuencia cardíaca: 114.7 bpm
-    - Presión sistólica: 143.03 mmHg
-    - Saturación de oxígeno: 95.31%
+    - Frecuencia cardíaca: 126.42 bpm
+    - Presión sistólica: 148.59 mmHg
+    - Saturación de oxígeno: 94.61%
     
     INTEGRIDAD:
     - Estado: VÁLIDA
