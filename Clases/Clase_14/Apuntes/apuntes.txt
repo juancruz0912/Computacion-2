@@ -1,3 +1,6 @@
+# Cliente-Servidor
+El cliente es el que va a establecer la conexion con el servidor, para hacer esto el cliente escribe y el servidor escucha
+
 # Docker
 Contenedor con un programa (instancia de imagen + la capa de escritura)
 Sobre el demon Docker corren los distintos programas, pero todos sobre el SO Host.

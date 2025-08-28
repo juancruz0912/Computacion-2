@@ -1,0 +1,42 @@
+# Sockets
+ En un principio, solo servian para comunicar procesos locales, pero con la evolucion del tiempo lo mejoraron
+ y ahora puede comunicar procesos de distintas maquinas
+
+ ### Familias
+ AF (adress family)
+ Hay distintas familias para distintos protocolos 
+
+# Ejercicio 7, diferencia entre TCP y UDP
+
+## Cuando usás TCP (SOCK_STREAM)
+
+Métodos típicos: connect(), sendall(), recv().
+
+TCP es orientado a conexión → hay que establecer una conexión primero (3-way handshake).
+
+El socket queda abierto hasta que lo cierres (close() o with).
+
+El envío y recepción no abren ni cierran nada automáticamente: usan la conexión ya establecida.
+
+## Cuando usás UDP (SOCK_DGRAM)
+
+Métodos típicos: sendto(), recvfrom().
+
+UDP es no orientado a conexión → cada datagrama es independiente.
+
+No necesitás connect().
+
+Cada sendto manda un paquete aislado a la dirección que pongas.
+
+Cada recvfrom recibe un paquete aislado y te dice de qué dirección vino.
+
+El socket se mantiene abierto hasta que vos lo cierres (with o close()), pero no existe el concepto de “conexión permanente” como en TCP.
+
+## con UDP se pueden perder paquetes
+
+- Si el servidor UDP no está en ese puerto, el cliente sí puede mandar el paquete igual (UDP no hace handshake como TCP).
+
+- En muchos sistemas, el SO descarta en silencio esos datagramas (ni siquiera te avisa).
+
+- En algunos casos, el cliente recibe un mensaje ICMP tipo “Port Unreachable”, pero Python normalmente lo trata como si nunca llegara respuesta (es indistinguible de un paquete perdido).
+

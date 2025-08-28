@@ -1,24 +1,12 @@
-# Docker
-Contenedor con un programa (instancia de imagen + la capa de escritura)
-Sobre el demon Docker corren los distintos programas, pero todos sobre el SO Host.
-A diferencia de las VM, donde cada una tiene un SO guest con la cual a traves de Hipervisor accede al Hardware
+# Redes - networking
 
-docker run hello-world
-To generate this message, Docker took the following steps:
- 1. The Docker client contacted the Docker daemon.
- 2. The Docker daemon pulled the "hello-world" image from the Docker Hub.
-    (amd64)
- 3. The Docker daemon created a new container from that image which runs the
-    executable that produces the output you are currently reading.
- 4. The Docker daemon streamed that output to the Docker client, which sent it
-    to your terminal.
+## Modelos de capa OSI
+Modelo de 7 capas donde hay abstraccion entre estas (la 5, 6 y 7 se pueden tratar como la misma)
 
+### Protocolos: 
+acuerdo entre capas para entenderse
+capa 2: Ethernet
+capa 3: IP
+capa 4: TCP/UDP: no verifica si llega el mensaje (meet, servidores dns)
+capa 7: DNS, HTTPS, SSH, FTP
 
-## Overlay
-Sistema de capas que juega con los permisos de escritura y lectura
-Donde yo solo interactuo solo con la capa de arriba y esta trabaja encima de las otras capas
-Donde puedo compartir las capas de lectura (las capas inferiores, como la de los paquetes del kernel) entre contenedores
-
-## Imagen
-Es cada capa de solo lectura, donde yo construyo un contenedor en base a una imagen.
-Es un archivo inalterable
