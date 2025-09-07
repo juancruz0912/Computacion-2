@@ -1,0 +1,23 @@
+# Crear servidores
+
+1 socket() se crea el socket vacio
+
+2 bind() se hace una llamada a sistema pidiendo al kernel una direccion y un purto (hasta el 1023 son well-knows, no se pueden usar)
+
+3 listen() 
+3.1 si yo pongo 0.0.0.0 es que escuche en todas las direcciones ip locales, el 0 representa un rango
+3.2 Socket activo (el que establece la conexion), socket pasivo (generador de sockets activos, ej: netcat?)
+3.3 Le digo la SO que guarde los datos cuando se conecte
+
+4 accept() de la lista de conexiones de listen busca un cliente que intente conectarse, si no hay nadie se bloquea 
+4.1 la primera vez que se conecta, el kernel crea un socket activo con los dos extremos (servidor-cliente)
+4.2 crea desde el socket pasivo un activo
+
+- Van a haber 3 sockets, el cliente, el servidor y el cliente-servidor (que se crea en 4.1)
+
+5 read()-write()
+
+6 close()
+
+
+
