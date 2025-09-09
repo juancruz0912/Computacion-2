@@ -1,7 +1,7 @@
 #Idea. Cerrar conexiones “colgadas” para liberar recursos.
 #Cliente: #2/#3 o nc 127.0.0.1 9012
 
-import socket
+import socket   
 
 HOST, PORT = "127.0.0.1", 9012
 IDLE_TIMEOUT = 10  # segundos

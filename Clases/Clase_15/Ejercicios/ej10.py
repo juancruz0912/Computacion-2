@@ -6,9 +6,9 @@ import socket
 HOST, PORT = "127.0.0.1", 9010
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as srv:
-    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # permite reusar el puerto
     srv.bind((HOST, PORT))
-    srv.listen(8)  # backlog
+    srv.listen(8)  # backlog para que el kernel acepte peticiones pendientes (hasta 8 procesos)
     print(f"Escuchando en {HOST}:{PORT} ... Ctrl+C para salir")
 
     while True:  # loop de sesiones (secuenciales)

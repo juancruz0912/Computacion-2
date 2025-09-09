@@ -4,7 +4,7 @@
 
 2 bind() se hace una llamada a sistema pidiendo al kernel una direccion y un purto (hasta el 1023 son well-knows, no se pueden usar)
 
-3 listen() 
+3 listen() Aca puedo decirle al kernel con un parametro que me aguante tantos procesos para poder establecer la conexion con los clientes
 3.1 si yo pongo 0.0.0.0 es que escuche en todas las direcciones ip locales, el 0 representa un rango
 3.2 Socket activo (el que establece la conexion), socket pasivo (generador de sockets activos, ej: netcat?)
 3.3 Le digo la SO que guarde los datos cuando se conecte
