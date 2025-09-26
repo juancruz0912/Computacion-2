@@ -1,0 +1,30 @@
+version: "3.8"
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: my_server
+    ports:
+      - "5000:5000"   # expone el puerto al host para netcat
+    networks:
+      - mynet
+    volumes:
+      - ./server.py:/app/server.py
+
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+    container_name: my_client
+    depends_on:
+      - server
+    networks:
+      - mynet
+    volumes:
+      - ./client.py:/app/client.py
+
+networks:
+  mynet:
+    driver: bridge
