@@ -1,0 +1,14 @@
+# ASYNC IO
+
+no se sincroniza mi programa con los resultados que voy obteniendo
+
+con await le digo al eventloop (pipeline, scheduler) que ya ocupe el tiempo de computo, que puede seguir con otra cosa. 
+await devuelve un iterador, no el resultado de las cosas
+
+yield from func(): se ejecuta la funcion que se llama hasta que haya un return o terminen todos los yield
+
+gather(): otra forma de implementar evenloop, le doy una lista de awaitables y espera a que terminen. 
+Paso mas de una corrutina
+resultados = await asyncio.gather(mi_corrutina(), otra_corrutina())
+
+en las tareas de cpu bound, no tiene sentido usar asyncio.sleep, ya que usa mucho cpu
