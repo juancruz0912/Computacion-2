@@ -12,3 +12,6 @@ Paso mas de una corrutina
 resultados = await asyncio.gather(mi_corrutina(), otra_corrutina())
 
 en las tareas de cpu bound, no tiene sentido usar asyncio.sleep, ya que usa mucho cpu
+
+create_task: crea una tarea asíncrona para que el scheduler la ejecute
+gather: espera a que todas las tareas terminen
