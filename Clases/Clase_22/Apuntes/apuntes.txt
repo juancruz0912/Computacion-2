@@ -1,12 +1,4 @@
-# Redes - networking
+# concurrent.futures
+hace promesas de que va a haber un resultado en el futuro
 
-## Modelos de capa OSI
-Modelo de 7 capas donde hay abstraccion entre estas (la 5, 6 y 7 se pueden tratar como la misma)
-
-### Protocolos: 
-acuerdo entre capas para entenderse
-capa 2: Ethernet
-capa 3: IP
-capa 4: TCP/UDP: no verifica si llega el mensaje (meet, servidores dns)
-capa 7: DNS, HTTPS, SSH, FTP
-
+Hacer la diferencia con greenthreads

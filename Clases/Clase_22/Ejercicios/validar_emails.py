@@ -35,7 +35,6 @@ def validar_emails_secuencial(emails):
     return resultados, duracion
 
 
-# --- Paso 4: validación concurrente con hilos ---
 def validar_emails_concurrente(emails, max_workers=20, timeout=5):
     print("\n⚙️ Validando emails (paralelo con hilos)...")
     inicio = time.time()
@@ -51,7 +50,6 @@ def validar_emails_concurrente(emails, max_workers=20, timeout=5):
                 resultados.append((futures[future], 'no verificable'))
             print(f"Verificado {i}/{len(emails)} emails...")
     duracion = time.time() - inicio
-    print(resultados)
     return resultados, duracion
 
 
