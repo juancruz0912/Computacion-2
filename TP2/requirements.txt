@@ -1,0 +1,21 @@
+# Dependencias del proyecto TP2
+
+# Cliente HTTP asíncrono
+aiohttp>=3.9.0
+
+# Archivos asíncronos
+aiofiles>=23.0.0
+
+# Parsing HTML
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+
+# Procesamiento de imágenes
+Pillow>=10.0.0
+
+# Web automation para screenshots
+selenium>=4.8.0
+
+# Cliente HTTP síncrono (para workers)
+requests>=2.28.0
+
