@@ -2,32 +2,43 @@ import asyncio
 import aiohttp
 import json
 import argparse
-from urllib.parse import urlencode
 
 
-async def test_scrape(server_url, target_url):
+async def test_scrape(server_url, target_url, full=False):
     """
     Probar el endpoint de scraping
     
     Args:
         server_url: URL del servidor (ej: http://localhost:8000)
         target_url: URL a scrapear
+        full: Si True, solicita procesamiento completo
     """
     endpoint = f"{server_url}/scrape?url={target_url}"
+    if full:
+        endpoint += "&full=true"
     
     print(f"📡 Enviando request a: {endpoint}")
-    print(f"🎯 Target URL: {target_url}\n")
+    print(f"🎯 Target URL: {target_url}")
+    print(f"🔧 Procesamiento completo: {'Sí' if full else 'No'}\n")
     
     async with aiohttp.ClientSession() as session:
         try:
             async with session.get(endpoint) as response:
                 print(f"📊 Status: {response.status}")
-                print(f"📋 Headers: {dict(response.headers)}\n")
                 
                 data = await response.json()
                 
-                print("📦 Respuesta:")
+                print("\n📦 Respuesta:")
                 print(json.dumps(data, indent=2, ensure_ascii=False))
+                
+                # Resumen
+                if data.get('status') == 'success':
+                    print("\n✅ Scraping exitoso")
+                    
+                    if 'processing_data' in data:
+                        print("✅ Procesamiento completado")
+                    elif 'processing_error' in data:
+                        print(f"⚠️  Error en procesamiento: {data['processing_error']}")
                 
                 return data
         
@@ -74,18 +85,24 @@ async def main():
         help='Realizar solo health check'
     )
     
+    parser.add_argument(
+        '--full',
+        action='store_true',
+        help='Solicitar procesamiento completo (requiere Servidor B activo)'
+    )
+    
     args = parser.parse_args()
     
     if args.health:
         await test_health(args.server)
     elif args.url:
-        await test_scrape(args.server, args.url)
+        await test_scrape(args.server, args.url, full=args.full)
     else:
         print("❌ Debes especificar --url o --health")
         print("\nEjemplos de uso:")
         print(f"  python client.py --health")
         print(f"  python client.py --url https://example.com")
-        print(f"  python client.py -s http://localhost:8000 -u https://python.org")
+        print(f"  python client.py --url https://example.com --full")
 
 
 if __name__ == '__main__':

@@ -1,12 +1,13 @@
 import socketserver
 import multiprocessing as mp
 from multiprocessing import Pool
-import json
 import argparse
 import logging
-import struct
 import time
 from datetime import datetime
+
+# Importar el protocolo unificado
+from common.protocol import Protocol, MessageType, TaskType
 
 # Configurar logging
 logging.basicConfig(
@@ -95,65 +96,6 @@ def process_images_task(data):
 
 
 # ============================================================================
-# PROTOCOLO DE COMUNICACIÓN
-# ============================================================================
-
-class Protocol:
-    """Protocolo simple para comunicación entre servidores"""
-    
-    @staticmethod
-    def encode_message(data):
-        """
-        Codifica un mensaje para enviar por socket
-        Formato: [4 bytes longitud][mensaje JSON]
-        
-        Args:
-            data: dict a enviar
-            
-        Returns:
-            bytes
-        """
-        json_data = json.dumps(data).encode('utf-8')
-        length = len(json_data)
-        # Empaquetar longitud como entero de 4 bytes (big-endian)
-        header = struct.pack('>I', length)
-        return header + json_data
-    
-    @staticmethod
-    def decode_message(sock):
-        """
-        Decodifica un mensaje recibido por socket
-        
-        Args:
-            sock: socket del cual leer
-            
-        Returns:
-            dict con los datos decodificados
-        """
-        # Leer header de 4 bytes
-        header = sock.recv(4)
-        if not header:
-            return None
-        
-        # Desempaquetar longitud
-        length = struct.unpack('>I', header)[0]
-        
-        # Leer el mensaje completo
-        chunks = []
-        bytes_received = 0
-        
-        while bytes_received < length:
-            chunk = sock.recv(min(length - bytes_received, 4096))
-            if not chunk:
-                raise RuntimeError("Socket connection broken")
-            chunks.append(chunk)
-            bytes_received += len(chunk)
-        
-        json_data = b''.join(chunks)
-        return json.loads(json_data.decode('utf-8'))
-
-
-# ============================================================================
 # HANDLER PARA PROCESAR REQUESTS
 # ============================================================================
 
@@ -165,11 +107,22 @@ class ProcessingRequestHandler(socketserver.BaseRequestHandler):
         try:
             logger.info(f"📨 Nueva conexión desde {self.client_address}")
             
-            # Recibir mensaje del cliente (Servidor A)
+            # Recibir mensaje del cliente (Servidor A) usando el protocolo unificado
             request_data = Protocol.decode_message(self.request)
             
             if not request_data:
                 logger.warning("⚠️  Mensaje vacío recibido")
+                return
+            
+            # Validar el mensaje
+            try:
+                Protocol.validate_message(request_data)
+            except ValueError as e:
+                logger.error(f"❌ Mensaje inválido: {e}")
+                error_response = Protocol.create_error(
+                    message=f"Invalid message format: {str(e)}"
+                )
+                self.request.sendall(Protocol.encode_message(error_response))
                 return
             
             logger.info(f"📦 Request recibido: {request_data.get('task_type', 'unknown')}")
@@ -185,10 +138,9 @@ class ProcessingRequestHandler(socketserver.BaseRequestHandler):
         
         except Exception as e:
             logger.error(f"❌ Error manejando request: {e}")
-            error_response = {
-                'status': 'error',
-                'message': str(e)
-            }
+            error_response = Protocol.create_error(
+                message=str(e)
+            )
             try:
                 self.request.sendall(Protocol.encode_message(error_response))
             except:
@@ -202,31 +154,34 @@ class ProcessingRequestHandler(socketserver.BaseRequestHandler):
             request_data: dict con la tarea a procesar
             
         Returns:
-            dict con el resultado
+            dict con el resultado (ya en formato Protocol)
         """
         task_type = request_data.get('task_type', 'unknown')
+        url = request_data.get('url', '')
         
         # Obtener el pool de procesos del servidor
         pool = self.server.process_pool
         
         try:
             # Seleccionar la función apropiada según el tipo de tarea
-            if task_type == 'screenshot':
+            if task_type == TaskType.SCREENSHOT.value:
                 result = pool.apply(process_screenshot_task, (request_data,))
             
-            elif task_type == 'performance':
+            elif task_type == TaskType.PERFORMANCE.value:
                 result = pool.apply(process_performance_task, (request_data,))
             
-            elif task_type == 'images':
+            elif task_type == TaskType.IMAGES.value:
                 result = pool.apply(process_images_task, (request_data,))
             
-            elif task_type == 'all':
+            elif task_type == TaskType.ALL.value:
                 # Procesar todas las tareas en paralelo
+                logger.info(f"🔄 Procesando TODAS las tareas para {url}")
+                
                 screenshot_future = pool.apply_async(process_screenshot_task, (request_data,))
                 performance_future = pool.apply_async(process_performance_task, (request_data,))
                 images_future = pool.apply_async(process_images_task, (request_data,))
                 
-                # Esperar resultados
+                # Esperar resultados con timeout
                 result = {
                     'screenshot': screenshot_future.get(timeout=30),
                     'performance': performance_future.get(timeout=30),
@@ -236,19 +191,20 @@ class ProcessingRequestHandler(socketserver.BaseRequestHandler):
             else:
                 raise ValueError(f"Tipo de tarea desconocido: {task_type}")
             
-            return {
-                'status': 'success',
-                'task_type': task_type,
-                'result': result
-            }
+            # Crear respuesta usando el protocolo
+            return Protocol.create_response(
+                task_type=task_type,
+                result=result
+            )
         
         except Exception as e:
             logger.error(f"❌ Error procesando tarea {task_type}: {e}")
-            return {
-                'status': 'error',
-                'task_type': task_type,
-                'message': str(e)
-            }
+            
+            # Crear mensaje de error usando el protocolo
+            return Protocol.create_error(
+                message=str(e),
+                task_type=task_type
+            )
 
 
 # ============================================================================

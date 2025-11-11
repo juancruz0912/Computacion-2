@@ -5,6 +5,8 @@ from bs4 import BeautifulSoup
 import argparse
 from datetime import datetime
 import logging
+from urllib.parse import urljoin
+from common.async_client import ProcessingClient
 
 # Configurar logging
 logging.basicConfig(
@@ -17,11 +19,15 @@ logger = logging.getLogger(__name__)
 class ScrapingServer:
     """Servidor HTTP asíncrono para scraping web"""
     
-    def __init__(self, host, port, workers=4):
+    def __init__(self, host, port, workers=4, processing_host='localhost', processing_port=9000):
         self.host = host
         self.port = port
         self.workers = workers
         self.app = web.Application()
+        
+        # Cliente para comunicarse con el Servidor B
+        self.processing_client = ProcessingClient(processing_host, processing_port)
+        
         self.setup_routes()
     
     def setup_routes(self):
@@ -39,11 +45,14 @@ class ScrapingServer:
     async def handle_scrape(self, request):
         """
         Endpoint principal de scraping
-        Query params: url (requerido)
+        Query params: 
+            - url (requerido): URL a scrapear
+            - full (opcional): Si es 'true', solicita procesamiento completo al Servidor B
         """
         try:
-            # Obtener URL del query parameter
+            # Obtener parámetros
             url = request.query.get('url')
+            full_processing = request.query.get('full', 'false').lower() == 'true'
             
             if not url:
                 return web.json_response({
@@ -58,18 +67,40 @@ class ScrapingServer:
                     'message': 'URL must start with http:// or https://'
                 }, status=400)
             
-            logger.info(f"Scraping URL: {url}")
+            logger.info(f"Scraping URL: {url} (full={full_processing})")
             
-            # Realizar el scraping
+            # Realizar el scraping básico
             scraping_data = await self.scrape_url(url)
             
-            # Construir respuesta
+            # Construir respuesta base
             response = {
                 'url': url,
                 'timestamp': datetime.utcnow().isoformat() + 'Z',
                 'scraping_data': scraping_data,
                 'status': 'success'
             }
+            
+            # Si se solicita procesamiento completo, comunicarse con el Servidor B
+            if full_processing:
+                logger.info(f"Solicitando procesamiento completo para {url}")
+                
+                try:
+                    # Solicitar procesamiento al Servidor B
+                    processing_result = await self.processing_client.request_all(url)
+                    
+                    # Agregar los resultados del procesamiento
+                    if processing_result.get('status') == 'success':
+                        response['processing_data'] = processing_result.get('result', {})
+                        logger.info("Procesamiento completado exitosamente")
+                    else:
+                        # El procesamiento falló, pero no afecta el scraping
+                        response['processing_error'] = processing_result.get('error_message', 'Unknown error')
+                        logger.warning(f"Error en procesamiento: {response['processing_error']}")
+                
+                except Exception as e:
+                    # Error comunicándose con el Servidor B
+                    logger.error(f"Error comunicándose con servidor de procesamiento: {e}")
+                    response['processing_error'] = f"Processing server unavailable: {str(e)}"
             
             return web.json_response(response)
         
@@ -117,6 +148,7 @@ class ScrapingServer:
                     'title': self.extract_title(soup),
                     'links': self.extract_links(soup, url),
                     'images_count': len(soup.find_all('img')),
+                    'headers': self.extract_headers(soup),
                 }
                 
                 return scraping_data
@@ -125,6 +157,14 @@ class ScrapingServer:
         """Extraer el título de la página"""
         title_tag = soup.find('title')
         return title_tag.get_text(strip=True) if title_tag else 'No title found'
+    
+    def extract_headers(self, soup):
+        """Extraer la estructura de headers (H1-H6)"""
+        headers = {}
+        for i in range(1, 7):
+            tag = f'h{i}'
+            headers[tag] = len(soup.find_all(tag))
+        return headers
     
     def extract_links(self, soup, base_url):
         """
@@ -145,8 +185,6 @@ class ScrapingServer:
             if href.startswith('http'):
                 links.append(href)
             elif href.startswith('/'):
-                # Extraer el dominio base
-                from urllib.parse import urljoin
                 absolute_url = urljoin(base_url, href)
                 links.append(absolute_url)
         
@@ -158,7 +196,7 @@ class ScrapingServer:
                 seen.add(link)
                 unique_links.append(link)
         
-        return unique_links[:50]  # Limitar a 50 links para evitar respuestas muy grandes
+        return unique_links[:50]  # Limitar a 50 links
     
     async def start(self):
         """Iniciar el servidor"""
@@ -170,7 +208,8 @@ class ScrapingServer:
         
         logger.info(f"🚀 Servidor de Scraping iniciado en {self.host}:{self.port}")
         logger.info(f"📊 Workers configurados: {self.workers}")
-        logger.info(f"🔗 Prueba con: http://{self.host}:{self.port}/scrape?url=https://example.com")
+        logger.info(f"🔗 Servidor de procesamiento: {self.processing_client.host}:{self.processing_client.port}")
+        logger.info(f"💡 Prueba con: http://{self.host}:{self.port}/scrape?url=https://example.com&full=true")
         
         # Mantener el servidor corriendo
         try:
@@ -208,6 +247,19 @@ def parse_arguments():
         help='Número de workers (default: 4)'
     )
     
+    parser.add_argument(
+        '--processing-host',
+        default='localhost',
+        help='Host del servidor de procesamiento (default: localhost)'
+    )
+    
+    parser.add_argument(
+        '--processing-port',
+        type=int,
+        default=9000,
+        help='Puerto del servidor de procesamiento (default: 9000)'
+    )
+    
     return parser.parse_args()
 
 
@@ -218,7 +270,9 @@ async def main():
     server = ScrapingServer(
         host=args.ip,
         port=args.port,
-        workers=args.workers
+        workers=args.workers,
+        processing_host=args.processing_host,
+        processing_port=args.processing_port
     )
     
     await server.start()
