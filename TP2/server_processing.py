@@ -9,6 +9,11 @@ from datetime import datetime
 # Importar el protocolo unificado
 from common.protocol import Protocol, MessageType, TaskType
 
+# Importar los procesadores reales
+from processor.screenshot import ScreenshotGenerator
+from processor.performance import PerformanceAnalyzer
+from processor.image_processor import ImageProcessor
+
 # Configurar logging
 logging.basicConfig(
     level=logging.INFO,
@@ -23,76 +28,107 @@ logger = logging.getLogger(__name__)
 
 def process_screenshot_task(data):
     """
-    Simula la generación de un screenshot (versión simplificada)
-    En la versión completa usaremos Selenium/Playwright
+    Generar screenshot usando Selenium/Chromium
     
     Args:
         data: dict con 'url' y otros parámetros
         
     Returns:
-        dict con resultado simulado
+        dict con resultado del screenshot
     """
     url = data.get('url', '')
     logger.info(f"[Proceso {mp.current_process().name}] Generando screenshot de {url}")
     
-    # Simular trabajo pesado
-    time.sleep(1)
+    try:
+        # Crear generador de screenshots
+        generator = ScreenshotGenerator(headless=True)
+        
+        # Capturar screenshot
+        result = generator.capture(url)
+        
+        logger.info(f"[Proceso {mp.current_process().name}] Screenshot completado")
+        return result
     
-    return {
-        'screenshot': 'base64_encoded_screenshot_placeholder',
-        'screenshot_size': 1024,
-        'timestamp': datetime.utcnow().isoformat() + 'Z'
-    }
+    except Exception as e:
+        logger.error(f"[Proceso {mp.current_process().name}] Error: {e}")
+        return {
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        }
 
 
 def process_performance_task(data):
     """
-    Simula el análisis de rendimiento
+    Analizar rendimiento usando Selenium
     
     Args:
         data: dict con 'url' y otros parámetros
         
     Returns:
-        dict con métricas de rendimiento simuladas
+        dict con métricas de rendimiento
     """
     url = data.get('url', '')
     logger.info(f"[Proceso {mp.current_process().name}] Analizando rendimiento de {url}")
     
-    # Simular trabajo pesado
-    time.sleep(0.5)
+    try:
+        # Crear analizador de rendimiento
+        analyzer = PerformanceAnalyzer(headless=True)
+        
+        # Analizar
+        result = analyzer.analyze(url)
+        
+        logger.info(f"[Proceso {mp.current_process().name}] Análisis completado")
+        return result
     
-    return {
-        'load_time_ms': 1250,
-        'total_size_kb': 2048,
-        'num_requests': 45,
-        'timestamp': datetime.utcnow().isoformat() + 'Z'
-    }
+    except Exception as e:
+        logger.error(f"[Proceso {mp.current_process().name}] Error: {e}")
+        return {
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        }
 
 
 def process_images_task(data):
     """
-    Simula el procesamiento de imágenes
+    Procesar imágenes de la página
     
     Args:
         data: dict con 'url' y lista de imágenes
         
     Returns:
-        dict con thumbnails simulados
+        dict con thumbnails procesados
     """
     url = data.get('url', '')
-    logger.info(f"[Proceso {mp.current_process().name}] Procesando imágenes de {url}")
+    image_urls = data.get('params', {}).get('image_urls', [])
     
-    # Simular trabajo pesado
-    time.sleep(0.8)
+    logger.info(f"[Proceso {mp.current_process().name}] Procesando {len(image_urls)} imágenes de {url}")
     
-    return {
-        'thumbnails': [
-            'base64_thumb1_placeholder',
-            'base64_thumb2_placeholder'
-        ],
-        'processed_count': 2,
-        'timestamp': datetime.utcnow().isoformat() + 'Z'
-    }
+    try:
+        # Nota: ImageProcessor es asíncrono, pero lo corremos en un event loop
+        import asyncio
+        
+        processor = ImageProcessor()
+        
+        # Crear un event loop para este proceso
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        # Ejecutar el procesamiento asíncrono
+        result = loop.run_until_complete(
+            processor.process_images(image_urls[:10], create_thumbnails=True)
+        )
+        
+        loop.close()
+        
+        logger.info(f"[Proceso {mp.current_process().name}] Procesamiento completado")
+        return result
+    
+    except Exception as e:
+        logger.error(f"[Proceso {mp.current_process().name}] Error: {e}")
+        return {
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        }
 
 
 # ============================================================================
@@ -165,28 +201,43 @@ class ProcessingRequestHandler(socketserver.BaseRequestHandler):
         try:
             # Seleccionar la función apropiada según el tipo de tarea
             if task_type == TaskType.SCREENSHOT.value:
+                logger.info(f"🎯 Procesando tarea SCREENSHOT para {url}")
                 result = pool.apply(process_screenshot_task, (request_data,))
             
             elif task_type == TaskType.PERFORMANCE.value:
+                logger.info(f"🎯 Procesando tarea PERFORMANCE para {url}")
                 result = pool.apply(process_performance_task, (request_data,))
             
             elif task_type == TaskType.IMAGES.value:
+                logger.info(f"🎯 Procesando tarea IMAGES para {url}")
                 result = pool.apply(process_images_task, (request_data,))
             
             elif task_type == TaskType.ALL.value:
                 # Procesar todas las tareas en paralelo
                 logger.info(f"🔄 Procesando TODAS las tareas para {url}")
                 
+                # Lanzar las tres tareas en paralelo
                 screenshot_future = pool.apply_async(process_screenshot_task, (request_data,))
                 performance_future = pool.apply_async(process_performance_task, (request_data,))
                 images_future = pool.apply_async(process_images_task, (request_data,))
                 
-                # Esperar resultados con timeout
-                result = {
-                    'screenshot': screenshot_future.get(timeout=30),
-                    'performance': performance_future.get(timeout=30),
-                    'images': images_future.get(timeout=30)
-                }
+                # Esperar resultados con timeout de 60 segundos
+                try:
+                    screenshot_result = screenshot_future.get(timeout=60)
+                    performance_result = performance_future.get(timeout=60)
+                    images_result = images_future.get(timeout=60)
+                    
+                    result = {
+                        'screenshot': screenshot_result,
+                        'performance': performance_result,
+                        'images': images_result
+                    }
+                    
+                    logger.info("✅ Todas las tareas completadas")
+                
+                except mp.TimeoutError:
+                    logger.error("⏱️  Timeout procesando tareas")
+                    raise Exception("Processing timeout (60s exceeded)")
             
             else:
                 raise ValueError(f"Tipo de tarea desconocido: {task_type}")
@@ -254,13 +305,19 @@ def parse_arguments():
     """Parsear argumentos de línea de comandos"""
     parser = argparse.ArgumentParser(
         description='Servidor de Procesamiento Distribuido',
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Ejemplos de uso:
+  %(prog)s -i localhost -p 9000
+  %(prog)s -i 0.0.0.0 -p 9000 -n 4
+  %(prog)s -i :: -p 9000 -n 8
+        """
     )
     
     parser.add_argument(
         '-i', '--ip',
         required=True,
-        help='Dirección de escucha'
+        help='Dirección de escucha (IPv4/IPv6)'
     )
     
     parser.add_argument(
@@ -288,9 +345,14 @@ def main():
     server_address = (args.ip, args.port)
     server = ProcessingServer(server_address, num_processes=args.processes)
     
-    logger.info(f"🚀 Servidor de Procesamiento iniciado en {args.ip}:{args.port}")
+    logger.info("=" * 70)
+    logger.info("🚀 SERVIDOR DE PROCESAMIENTO INICIADO")
+    logger.info("=" * 70)
+    logger.info(f"📍 Dirección: {args.ip}:{args.port}")
     logger.info(f"⚙️  Procesos en el pool: {server.num_processes}")
+    logger.info(f"🖥️  CPUs disponibles: {mp.cpu_count()}")
     logger.info(f"💡 Presiona Ctrl+C para detener")
+    logger.info("=" * 70)
     
     try:
         # Iniciar el servidor (bloqueante)
@@ -299,7 +361,7 @@ def main():
         logger.info("\n🛑 Deteniendo servidor...")
     finally:
         server.shutdown()
-        logger.info("👋 Servidor detenido")
+        logger.info("👋 Servidor detenido correctamente")
 
 
 if __name__ == '__main__':

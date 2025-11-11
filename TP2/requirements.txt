@@ -14,7 +14,7 @@ lxml>=4.9.0
 Pillow>=10.0.0
 
 # Web automation para screenshots
-selenium>=4.8.0
+selenium>=4.15.0
 
 # Cliente HTTP síncrono (para workers)
 requests>=2.28.0

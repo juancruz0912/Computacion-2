@@ -1,146 +1,121 @@
 """
-Cliente asíncrono para comunicarse con el Servidor de Procesamiento
+Cliente HTTP asíncrono para realizar scraping web
 """
 
+import aiohttp
 import asyncio
 import logging
-from typing import Dict, Any, Optional
-from .protocol import Protocol, TaskType
+from typing import Optional, Dict, Tuple
 
 logger = logging.getLogger(__name__)
 
 
-class ProcessingClient:
-    """Cliente asíncrono para comunicarse con el Servidor B"""
+class AsyncHttpClient:
+    """Cliente HTTP asíncrono optimizado para scraping"""
     
-    def __init__(self, host: str, port: int, timeout: int = 30):
+    def __init__(self, timeout: int = 30, max_concurrent: int = 10):
         """
-        Inicializar el cliente
+        Inicializar el cliente HTTP
         
         Args:
-            host: Host del servidor de procesamiento
-            port: Puerto del servidor de procesamiento
-            timeout: Timeout en segundos para las operaciones
+            timeout: Timeout en segundos para requests
+            max_concurrent: Máximo de conexiones concurrentes
         """
-        self.host = host
-        self.port = port
-        self.timeout = timeout
+        self.timeout = aiohttp.ClientTimeout(total=timeout)
+        self.max_concurrent = max_concurrent
+        self.semaphore = asyncio.Semaphore(max_concurrent)
+        
+        # Headers por defecto para evitar bloqueos
+        self.default_headers = {
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1'
+        }
     
-    async def send_task(self, task_type: str, url: str, **params) -> Dict[str, Any]:
+    async def fetch(self, url: str, headers: Optional[Dict] = None) -> Tuple[int, str, Dict]:
         """
-        Enviar una tarea al servidor de procesamiento
+        Realizar un GET request asíncrono
         
         Args:
-            task_type: Tipo de tarea (TaskType)
-            url: URL a procesar
-            **params: Parámetros adicionales
+            url: URL a descargar
+            headers: Headers HTTP opcionales
             
         Returns:
-            dict con el resultado del procesamiento
+            Tupla (status_code, html_content, response_headers)
             
         Raises:
-            ConnectionError: Si no se puede conectar al servidor
-            TimeoutError: Si la operación excede el timeout
-            ValueError: Si la respuesta es inválida
+            aiohttp.ClientError: Si hay error de red
+            asyncio.TimeoutError: Si excede el timeout
         """
-        try:
-            # Crear la solicitud
-            request = Protocol.create_request(task_type, url, **params)
+        async with self.semaphore:  # Limitar concurrencia
             
-            logger.info(f"Conectando al servidor de procesamiento {self.host}:{self.port}")
+            # Combinar headers
+            request_headers = self.default_headers.copy()
+            if headers:
+                request_headers.update(headers)
             
-            # Conectar al servidor de forma asíncrona
-            reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(self.host, self.port),
-                timeout=5  # Timeout de conexión de 5 segundos
-            )
-            
-            try:
-                logger.info(f"Enviando tarea tipo '{task_type}' para URL: {url}")
+            async with aiohttp.ClientSession(timeout=self.timeout) as session:
+                logger.info(f"📥 Descargando: {url}")
                 
-                # Codificar y enviar el mensaje
-                message_bytes = Protocol.encode_message(request)
-                writer.write(message_bytes)
-                await writer.drain()
+                try:
+                    async with session.get(url, headers=request_headers, allow_redirects=True) as response:
+                        status = response.status
+                        content = await response.text()
+                        response_headers = dict(response.headers)
+                        
+                        logger.info(f"✅ {url} - Status: {status} - Size: {len(content)} bytes")
+                        
+                        return status, content, response_headers
                 
-                logger.debug(f"Mensaje enviado ({len(message_bytes)} bytes)")
+                except asyncio.TimeoutError:
+                    logger.error(f"⏱️  Timeout descargando {url}")
+                    raise
                 
-                # Recibir la respuesta con timeout
-                response = await asyncio.wait_for(
-                    self._receive_response(reader),
-                    timeout=self.timeout
-                )
-                
-                logger.info(f"Respuesta recibida: {response.get('status', 'unknown')}")
-                
-                return response
-            
-            finally:
-                # Cerrar la conexión
-                writer.close()
-                await writer.wait_closed()
-                logger.debug("Conexión cerrada")
-        
-        except asyncio.TimeoutError:
-            logger.error(f"Timeout comunicándose con {self.host}:{self.port}")
-            raise TimeoutError(f"Timeout después de {self.timeout}s")
-        
-        except ConnectionRefusedError:
-            logger.error(f"Conexión rechazada por {self.host}:{self.port}")
-            raise ConnectionError(f"Servidor de procesamiento no disponible en {self.host}:{self.port}")
-        
-        except Exception as e:
-            logger.error(f"Error comunicándose con servidor de procesamiento: {e}")
-            raise
+                except aiohttp.ClientError as e:
+                    logger.error(f"❌ Error descargando {url}: {e}")
+                    raise
     
-    async def _receive_response(self, reader: asyncio.StreamReader) -> Dict[str, Any]:
+    async def fetch_multiple(self, urls: list[str]) -> Dict[str, Tuple[int, str, Dict]]:
         """
-        Recibir y decodificar la respuesta del servidor
+        Descargar múltiples URLs en paralelo
         
         Args:
-            reader: StreamReader de asyncio
+            urls: Lista de URLs
             
         Returns:
-            dict con la respuesta decodificada
+            Diccionario {url: (status, content, headers)}
         """
-        # Leer el header (4 bytes)
-        header = await reader.readexactly(Protocol.HEADER_SIZE)
+        tasks = [self.fetch(url) for url in urls]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        if not header:
-            raise ValueError("Respuesta vacía del servidor")
-        
-        # Decodificar longitud
-        import struct
-        (length,) = struct.unpack(Protocol.HEADER_FORMAT, header)
-        
-        # Verificar tamaño
-        if length > Protocol.MAX_MESSAGE_SIZE:
-            raise ValueError(f"Respuesta demasiado grande: {length} bytes")
-        
-        # Leer el payload completo
-        payload = await reader.readexactly(length)
-        
-        # Decodificar JSON
-        import json
-        response = json.loads(payload.decode('utf-8'))
-        
-        # Validar la respuesta
-        Protocol.validate_message(response)
-        
-        return response
+        return {
+            url: result if not isinstance(result, Exception) else (0, str(result), {})
+            for url, result in zip(urls, results)
+        }
     
-    async def request_screenshot(self, url: str) -> Dict[str, Any]:
-        """Solicitar generación de screenshot"""
-        return await self.send_task(TaskType.SCREENSHOT.value, url)
-    
-    async def request_performance(self, url: str) -> Dict[str, Any]:
-        """Solicitar análisis de rendimiento"""
-        return await self.send_task(TaskType.PERFORMANCE.value, url)
-    
-    async def request_images(self, url: str) -> Dict[str, Any]:
-        """Solicitar procesamiento de imágenes"""
-        return await self.send_task(TaskType.IMAGES.value, url)
-    
-    async def request_all(self, url: str) -> Dict[str, Any]:
-        """Solicitar todas las tareas en paralelo"""
-        return await self.send_task(TaskType.ALL.value, url)
+    async def download_binary(self, url: str) -> bytes:
+        """
+        Descargar contenido binario (imágenes, PDFs, etc.)
+        
+        Args:
+            url: URL del recurso
+            
+        Returns:
+            Contenido binario
+        """
+        async with self.semaphore:
+            async with aiohttp.ClientSession(timeout=self.timeout) as session:
+                logger.info(f"📥 Descargando binario: {url}")
+                
+                async with session.get(url, headers=self.default_headers) as response:
+                    if response.status != 200:
+                        raise aiohttp.ClientError(f"HTTP {response.status}")
+                    
+                    content = await response.read()
+                    logger.info(f"✅ Descargado: {len(content)} bytes")
+                    
+                    return content

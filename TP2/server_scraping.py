@@ -1,11 +1,12 @@
 import asyncio
 import aiohttp
 from aiohttp import web
-from bs4 import BeautifulSoup
 import argparse
 from datetime import datetime
 import logging
-from urllib.parse import urljoin
+
+# Importar módulos de scraping
+from scraper import HtmlParser, MetadataExtractor, AsyncHttpClient
 from common.async_client import ProcessingClient
 
 # Configurar logging
@@ -24,6 +25,9 @@ class ScrapingServer:
         self.port = port
         self.workers = workers
         self.app = web.Application()
+        
+        # Cliente HTTP para scraping
+        self.http_client = AsyncHttpClient(timeout=30)
         
         # Cliente para comunicarse con el Servidor B
         self.processing_client = ProcessingClient(processing_host, processing_port)
@@ -67,9 +71,9 @@ class ScrapingServer:
                     'message': 'URL must start with http:// or https://'
                 }, status=400)
             
-            logger.info(f"Scraping URL: {url} (full={full_processing})")
+            logger.info(f"🔍 Scraping URL: {url} (full={full_processing})")
             
-            # Realizar el scraping básico
+            # Realizar el scraping completo
             scraping_data = await self.scrape_url(url)
             
             # Construir respuesta base
@@ -82,7 +86,7 @@ class ScrapingServer:
             
             # Si se solicita procesamiento completo, comunicarse con el Servidor B
             if full_processing:
-                logger.info(f"Solicitando procesamiento completo para {url}")
+                logger.info(f"🔄 Solicitando procesamiento completo para {url}")
                 
                 try:
                     # Solicitar procesamiento al Servidor B
@@ -91,28 +95,26 @@ class ScrapingServer:
                     # Agregar los resultados del procesamiento
                     if processing_result.get('status') == 'success':
                         response['processing_data'] = processing_result.get('result', {})
-                        logger.info("Procesamiento completado exitosamente")
+                        logger.info("✅ Procesamiento completado exitosamente")
                     else:
-                        # El procesamiento falló, pero no afecta el scraping
                         response['processing_error'] = processing_result.get('error_message', 'Unknown error')
-                        logger.warning(f"Error en procesamiento: {response['processing_error']}")
+                        logger.warning(f"⚠️  Error en procesamiento: {response['processing_error']}")
                 
                 except Exception as e:
-                    # Error comunicándose con el Servidor B
-                    logger.error(f"Error comunicándose con servidor de procesamiento: {e}")
+                    logger.error(f"❌ Error comunicándose con servidor de procesamiento: {e}")
                     response['processing_error'] = f"Processing server unavailable: {str(e)}"
             
             return web.json_response(response)
         
         except asyncio.TimeoutError:
-            logger.error(f"Timeout scraping {url}")
+            logger.error(f"⏱️  Timeout scraping {url}")
             return web.json_response({
                 'status': 'error',
                 'message': 'Request timeout (30 seconds)'
             }, status=408)
         
         except Exception as e:
-            logger.error(f"Error scraping {url}: {str(e)}")
+            logger.error(f"❌ Error scraping {url}: {str(e)}")
             return web.json_response({
                 'status': 'error',
                 'message': str(e)
@@ -120,83 +122,48 @@ class ScrapingServer:
     
     async def scrape_url(self, url):
         """
-        Realizar el scraping de una URL de forma asíncrona
+        Realizar el scraping completo de una URL
         
         Args:
             url: URL a scrapear
             
         Returns:
-            dict con los datos extraídos
+            dict con todos los datos extraídos
         """
-        timeout = aiohttp.ClientTimeout(total=30)
+        # Descargar la página
+        status, html, headers = await self.http_client.fetch(url)
         
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(url) as response:
-                
-                # Verificar que la respuesta sea exitosa
-                if response.status != 200:
-                    raise Exception(f"HTTP {response.status}: {response.reason}")
-                
-                # Leer el contenido HTML
-                html = await response.text()
-                
-                # Parsear con BeautifulSoup
-                soup = BeautifulSoup(html, 'html.parser')
-                
-                # Extraer información básica
-                scraping_data = {
-                    'title': self.extract_title(soup),
-                    'links': self.extract_links(soup, url),
-                    'images_count': len(soup.find_all('img')),
-                    'headers': self.extract_headers(soup),
-                }
-                
-                return scraping_data
-    
-    def extract_title(self, soup):
-        """Extraer el título de la página"""
-        title_tag = soup.find('title')
-        return title_tag.get_text(strip=True) if title_tag else 'No title found'
-    
-    def extract_headers(self, soup):
-        """Extraer la estructura de headers (H1-H6)"""
-        headers = {}
-        for i in range(1, 7):
-            tag = f'h{i}'
-            headers[tag] = len(soup.find_all(tag))
-        return headers
-    
-    def extract_links(self, soup, base_url):
-        """
-        Extraer todos los enlaces de la página
+        if status != 200:
+            raise Exception(f"HTTP {status}")
         
-        Args:
-            soup: BeautifulSoup object
-            base_url: URL base para resolver enlaces relativos
-            
-        Returns:
-            list de URLs absolutas
-        """
-        links = []
-        for a_tag in soup.find_all('a', href=True):
-            href = a_tag['href']
-            
-            # Convertir enlaces relativos a absolutos
-            if href.startswith('http'):
-                links.append(href)
-            elif href.startswith('/'):
-                absolute_url = urljoin(base_url, href)
-                links.append(absolute_url)
+        # Parsear HTML
+        parser = HtmlParser(html, url)
+        metadata_extractor = MetadataExtractor(html)
         
-        # Eliminar duplicados manteniendo el orden
-        seen = set()
-        unique_links = []
-        for link in links:
-            if link not in seen:
-                seen.add(link)
-                unique_links.append(link)
+        # Extraer toda la información
+        scraping_data = {
+            'basic': {
+                'title': parser.extract_title(),
+                'text_preview': parser.extract_text_content(max_length=200),
+                'word_count': len(html.split())
+            },
+            'structure': {
+                'headers': parser.extract_headers(),
+                'headers_content': parser.extract_headers_content(),
+                'elements_count': parser.count_elements()
+            },
+            'links': parser.extract_links(limit=30),
+            'images': parser.extract_images(limit=10),
+            'metadata': metadata_extractor.extract_all(),
+            'response': {
+                'status_code': status,
+                'content_type': headers.get('Content-Type', ''),
+                'content_length': headers.get('Content-Length', ''),
+                'server': headers.get('Server', '')
+            }
+        }
         
-        return unique_links[:50]  # Limitar a 50 links
+        return scraping_data
     
     async def start(self):
         """Iniciar el servidor"""
@@ -211,11 +178,10 @@ class ScrapingServer:
         logger.info(f"🔗 Servidor de procesamiento: {self.processing_client.host}:{self.processing_client.port}")
         logger.info(f"💡 Prueba con: http://{self.host}:{self.port}/scrape?url=https://example.com&full=true")
         
-        # Mantener el servidor corriendo
         try:
             await asyncio.Event().wait()
         except KeyboardInterrupt:
-            logger.info("Deteniendo servidor...")
+            logger.info("🛑 Deteniendo servidor...")
         finally:
             await runner.cleanup()
 
@@ -227,46 +193,17 @@ def parse_arguments():
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     
-    parser.add_argument(
-        '-i', '--ip',
-        required=True,
-        help='Dirección de escucha (soporta IPv4/IPv6)'
-    )
-    
-    parser.add_argument(
-        '-p', '--port',
-        type=int,
-        required=True,
-        help='Puerto de escucha'
-    )
-    
-    parser.add_argument(
-        '-w', '--workers',
-        type=int,
-        default=4,
-        help='Número de workers (default: 4)'
-    )
-    
-    parser.add_argument(
-        '--processing-host',
-        default='localhost',
-        help='Host del servidor de procesamiento (default: localhost)'
-    )
-    
-    parser.add_argument(
-        '--processing-port',
-        type=int,
-        default=9000,
-        help='Puerto del servidor de procesamiento (default: 9000)'
-    )
+    parser.add_argument('-i', '--ip', required=True, help='Dirección de escucha')
+    parser.add_argument('-p', '--port', type=int, required=True, help='Puerto de escucha')
+    parser.add_argument('-w', '--workers', type=int, default=4, help='Número de workers')
+    parser.add_argument('--processing-host', default='localhost', help='Host del servidor de procesamiento')
+    parser.add_argument('--processing-port', type=int, default=9000, help='Puerto del servidor de procesamiento')
     
     return parser.parse_args()
 
 
 async def main():
-    """Función principal"""
     args = parse_arguments()
-    
     server = ScrapingServer(
         host=args.ip,
         port=args.port,
@@ -274,7 +211,6 @@ async def main():
         processing_host=args.processing_host,
         processing_port=args.processing_port
     )
-    
     await server.start()
 
 
@@ -282,4 +218,4 @@ if __name__ == '__main__':
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        print("\n👋 Servidor detenido por el usuario")
+        print("\n👋 Servidor detenido")
