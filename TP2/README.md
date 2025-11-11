@@ -6,15 +6,15 @@ Sistema distribuido de alto rendimiento para scraping, análisis y procesamiento
 
 ## 📋 Tabla de Contenidos
 
-- [Descripción](#descripción)
-- [Características](#características)
-- [Requisitos](#requisitos)
-- [Instalación](#instalación)
-- [Uso Rápido](#uso-rápido)
-- [Documentación Detallada](#documentación-detallada)
-- [Ejemplos](#ejemplos)
-- [Testing](#testing)
-- [Solución de problemas](#Solución-de-problemas)
+- [Descripción](#-descripción)
+- [Características](#-características)
+- [Requisitos](#-requisitos)
+- [Instalación](#-instalación)
+- [Uso Rápido](#-uso-rápido)
+- [Documentación Detallada](#-documentación-detallada)
+- [Solución de Problemas](#Solución-de-problemas)
+- [Estructura del Proyecto](#-estructura-del-proyecto)
+- [Autor](#-autor)
 
 ---
 
@@ -281,8 +281,6 @@ Ver [`docs/PROTOCOL.md`](docs/PROTOCOL.md) para detalles.
 
 ---
 
-
----
 
 ## Solución de problemas
 
