@@ -1,284 +1,234 @@
 """
-Protocolo de comunicación entre servidores
-
-Formato del mensaje:
-[4 bytes: longitud][N bytes: mensaje JSON]
-
-Tipos de mensajes:
-- REQUEST: Cliente solicita procesamiento
-- RESPONSE: Servidor envía resultado
-- ERROR: Ocurrió un error
+Protocolo de comunicación unificado entre servidores
 """
-
-import struct
 import json
-import logging
+import struct
 from enum import Enum
-from typing import Dict, Any, Optional, Union, BinaryIO
-from datetime import datetime
-import socket
+from typing import Dict, Any
+import asyncio
+import logging
 
 logger = logging.getLogger(__name__)
 
 
 class MessageType(Enum):
-    """Tipos de mensajes soportados"""
-    REQUEST = "request"
-    RESPONSE = "response"
-    ERROR = "error"
-    PING = "ping"
-    PONG = "pong"
+    """Tipos de mensajes"""
+    REQUEST = 'request'
+    RESPONSE = 'response'
+    ERROR = 'error'
 
 
 class TaskType(Enum):
-    """Tipos de tareas que puede procesar el Servidor B"""
-    SCREENSHOT = "screenshot"
-    PERFORMANCE = "performance"
-    IMAGES = "images"
-    ALL = "all"  # Ejecutar todas las tareas en paralelo
+    """Tipos de tareas de procesamiento"""
+    SCREENSHOT = 'screenshot'
+    PERFORMANCE = 'performance'
+    IMAGES = 'images'
+    TECHNOLOGIES = 'technologies'  # ✅ NUEVO
+    SEO = 'seo'                     # ✅ NUEVO
+    ALL = 'all'
 
 
 class Protocol:
     """
-    Protocolo de comunicación para mensajes entre servidores
+    Protocolo de comunicación basado en JSON con prefijo de longitud
     
     Formato del mensaje:
-    - Header: 4 bytes (entero big-endian) indicando longitud del payload
-    - Payload: JSON UTF-8 con la estructura del mensaje
+    [4 bytes: longitud][JSON data]
     """
     
-    # Constantes
-    HEADER_SIZE = 4
-    MAX_MESSAGE_SIZE = 10 * 1024 * 1024  # 10 MB
-    HEADER_FORMAT = '>I'  # Unsigned int, big-endian
-    
     @staticmethod
-    def create_request(task_type: str, url: str, **kwargs) -> Dict[str, Any]:
+    def create_request(task_type: TaskType, url: str, params: dict = None) -> dict:
         """
-        Crear un mensaje de solicitud
+        Crear un mensaje de request
         
         Args:
-            task_type: Tipo de tarea (TaskType)
+            task_type: Tipo de tarea (TaskType enum)
             url: URL a procesar
-            **kwargs: Parámetros adicionales
-            
+            params: Parámetros adicionales (opcional)
+        
         Returns:
-            dict con la estructura del request
+            dict con el mensaje de request
         """
         return {
-            'message_type': MessageType.REQUEST.value,
-            'task_type': task_type,
+            'type': MessageType.REQUEST.value,
+            'task_type': task_type.value if isinstance(task_type, TaskType) else task_type,
             'url': url,
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
-            'params': kwargs
+            'params': params or {}
         }
     
     @staticmethod
-    def create_response(task_type: str, result: Any, **kwargs) -> Dict[str, Any]:
+    def create_response(task_type: str, result: Dict[str, Any]) -> dict:
         """
-        Crear un mensaje de respuesta exitosa
+        Crear un mensaje de response
         
         Args:
             task_type: Tipo de tarea procesada
             result: Resultado del procesamiento
-            **kwargs: Metadatos adicionales
-            
+        
         Returns:
-            dict con la estructura del response
+            dict con el mensaje de response
         """
         return {
-            'message_type': MessageType.RESPONSE.value,
-            'status': 'success',
+            'type': MessageType.RESPONSE.value,
             'task_type': task_type,
-            'result': result,
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
-            'metadata': kwargs
+            'result': result
         }
     
     @staticmethod
-    def create_error(message: str, task_type: Optional[str] = None, **kwargs) -> Dict[str, Any]:
+    def create_error(message: str, task_type: str = None) -> dict:
         """
         Crear un mensaje de error
         
         Args:
-            message: Descripción del error
-            task_type: Tipo de tarea que falló (opcional)
-            **kwargs: Información adicional del error
-            
+            message: Mensaje de error
+            task_type: Tipo de tarea que causó el error (opcional)
+        
         Returns:
-            dict con la estructura del error
+            dict con el mensaje de error
         """
-        return {
-            'message_type': MessageType.ERROR.value,
-            'status': 'error',
-            'task_type': task_type,
-            'error_message': message,
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
-            'details': kwargs
+        error_msg = {
+            'type': MessageType.ERROR.value,
+            'error': message
         }
+        
+        if task_type:
+            error_msg['task_type'] = task_type
+        
+        return error_msg
     
     @staticmethod
-    def encode_message(data: Dict[str, Any]) -> bytes:
+    def encode_message(message: dict) -> bytes:
         """
-        Codificar un mensaje para enviar por socket
+        Codificar mensaje a bytes con prefijo de longitud
         
         Args:
-            data: Diccionario con los datos del mensaje
-            
-        Returns:
-            bytes codificados (header + payload)
-            
-        Raises:
-            ValueError: Si el mensaje es demasiado grande
-        """
-        try:
-            # Serializar a JSON
-            json_data = json.dumps(data, ensure_ascii=False).encode('utf-8')
-            
-            # Verificar tamaño
-            if len(json_data) > Protocol.MAX_MESSAGE_SIZE:
-                raise ValueError(
-                    f"Mensaje demasiado grande: {len(json_data)} bytes "
-                    f"(máximo: {Protocol.MAX_MESSAGE_SIZE})"
-                )
-            
-            # Crear header con la longitud
-            header = struct.pack(Protocol.HEADER_FORMAT, len(json_data))
-            
-            return header + json_data
+            message: Diccionario con el mensaje
         
-        except (TypeError, ValueError) as e:
-            logger.error(f"Error codificando mensaje: {e}")
-            raise
+        Returns:
+            bytes con [longitud de 4 bytes][JSON]
+        """
+        json_data = json.dumps(message, ensure_ascii=False)
+        json_bytes = json_data.encode('utf-8')
+        
+        # Crear prefijo de longitud (4 bytes, big-endian)
+        length_prefix = struct.pack('>I', len(json_bytes))
+        
+        return length_prefix + json_bytes
     
     @staticmethod
-    def decode_message(sock: Union[socket.socket, BinaryIO]) -> Optional[Dict[str, Any]]:
+    def decode_message(sock) -> dict:
         """
-        Decodificar un mensaje recibido por socket o archivo binario
+        Decodificar mensaje desde socket
         
         Args:
-            sock: Socket o objeto BinaryIO del cual leer
-            
+            sock: Socket del que leer
+        
         Returns:
-            dict con los datos decodificados o None si no hay datos
-            
-        Raises:
-            RuntimeError: Si la conexión se cierra inesperadamente
-            ValueError: Si el mensaje está corrupto o es demasiado grande
+            dict con el mensaje decodificado
         """
         try:
-            # Leer header (4 bytes)
-            header = Protocol._recv_exact(sock, Protocol.HEADER_SIZE)
+            # Leer prefijo de longitud (4 bytes)
+            length_data = sock.recv(4)
             
-            if not header:
+            if not length_data or len(length_data) < 4:
                 return None
             
-            # Desempaquetar longitud
-            (length,) = struct.unpack(Protocol.HEADER_FORMAT, header)
+            # Decodificar longitud
+            message_length = struct.unpack('>I', length_data)[0]
             
-            # Verificar tamaño razonable
-            if length > Protocol.MAX_MESSAGE_SIZE:
-                raise ValueError(
-                    f"Mensaje demasiado grande: {length} bytes "
-                    f"(máximo: {Protocol.MAX_MESSAGE_SIZE})"
-                )
+            # Leer el mensaje completo
+            chunks = []
+            bytes_received = 0
             
-            # Leer el payload completo
-            json_data = Protocol._recv_exact(sock, length)
+            while bytes_received < message_length:
+                chunk = sock.recv(min(message_length - bytes_received, 8192))
+                
+                if not chunk:
+                    break
+                
+                chunks.append(chunk)
+                bytes_received += len(chunk)
             
-            if not json_data:
-                raise RuntimeError("Conexión cerrada mientras se leía el payload")
+            # Combinar chunks y decodificar JSON
+            json_data = b''.join(chunks).decode('utf-8')
+            return json.loads(json_data)
+        
+        except Exception as e:
+            logger.error(f"Error decodificando mensaje: {e}")
+            return None
+    
+    @staticmethod
+    async def receive_message(reader: asyncio.StreamReader) -> dict:
+        """
+        Recibir mensaje de forma asíncrona
+        
+        Args:
+            reader: StreamReader de asyncio
+        
+        Returns:
+            dict con el mensaje decodificado
+        """
+        try:
+            # Leer prefijo de longitud (4 bytes)
+            length_data = await reader.readexactly(4)
+            
+            if not length_data:
+                return None
+            
+            # Decodificar longitud
+            message_length = struct.unpack('>I', length_data)[0]
+            
+            # Leer el mensaje completo
+            json_bytes = await reader.readexactly(message_length)
             
             # Decodificar JSON
-            return json.loads(json_data.decode('utf-8'))
+            json_data = json_bytes.decode('utf-8')
+            return json.loads(json_data)
         
-        except (struct.error, json.JSONDecodeError) as e:
-            logger.error(f"Error decodificando mensaje: {e}")
-            raise ValueError(f"Mensaje corrupto: {e}")
+        except asyncio.IncompleteReadError:
+            logger.warning("Conexión cerrada antes de recibir mensaje completo")
+            return None
+        
+        except Exception as e:
+            logger.error(f"Error recibiendo mensaje: {e}")
+            return None
     
     @staticmethod
-    def _recv_exact(sock: Union[socket.socket, BinaryIO], num_bytes: int) -> bytes:
+    def validate_message(message: dict) -> bool:
         """
-        Recibir exactamente num_bytes del socket o archivo
+        Validar que un mensaje tenga el formato correcto
         
         Args:
-            sock: Socket o BinaryIO del cual leer
-            num_bytes: Número exacto de bytes a leer
-            
-        Returns:
-            bytes leídos
-            
-        Raises:
-            RuntimeError: Si la conexión se cierra antes de leer todos los bytes
-        """
-        chunks = []
-        bytes_received = 0
+            message: Mensaje a validar
         
-        while bytes_received < num_bytes:
-            # Determinar cuántos bytes leer en este chunk
-            bytes_to_read = min(num_bytes - bytes_received, 4096)
-            
-            # Leer según el tipo de objeto
-            if hasattr(sock, 'recv'):
-                # Es un socket real
-                chunk = sock.recv(bytes_to_read)
-            elif hasattr(sock, 'read'):
-                # Es un objeto tipo archivo (BytesIO, FileIO, etc.)
-                chunk = sock.read(bytes_to_read)
-            else:
-                raise TypeError(f"Objeto no soportado: {type(sock)}")
-            
-            if not chunk:
-                if bytes_received == 0:
-                    return b''  # Conexión cerrada limpiamente
-                else:
-                    raise RuntimeError(
-                        f"Conexión cerrada después de {bytes_received}/{num_bytes} bytes"
-                    )
-            
-            chunks.append(chunk)
-            bytes_received += len(chunk)
-        
-        return b''.join(chunks)
-    
-    @staticmethod
-    def validate_message(data: Dict[str, Any]) -> bool:
-        """
-        Validar que un mensaje tenga la estructura correcta
-        
-        Args:
-            data: Diccionario con el mensaje
-            
         Returns:
             True si es válido
-            
+        
         Raises:
             ValueError: Si el mensaje es inválido
         """
-        # Validar que tenga el campo message_type
-        if 'message_type' not in data:
-            raise ValueError("Mensaje sin campo 'message_type'")
+        if not isinstance(message, dict):
+            raise ValueError("Message must be a dictionary")
         
-        msg_type = data['message_type']
+        # Verificar tipo de mensaje
+        msg_type = message.get('type')
+        if msg_type not in [t.value for t in MessageType]:
+            raise ValueError(f"Invalid message type: {msg_type}")
         
-        # Validar según el tipo de mensaje
+        # Validar según tipo
         if msg_type == MessageType.REQUEST.value:
-            required_fields = ['task_type', 'url']
-            for field in required_fields:
-                if field not in data:
-                    raise ValueError(f"REQUEST sin campo '{field}'")
+            if 'task_type' not in message:
+                raise ValueError("Request message must have 'task_type'")
+            
+            if 'url' not in message:
+                raise ValueError("Request message must have 'url'")
         
         elif msg_type == MessageType.RESPONSE.value:
-            required_fields = ['status', 'task_type', 'result']
-            for field in required_fields:
-                if field not in data:
-                    raise ValueError(f"RESPONSE sin campo '{field}'")
+            if 'result' not in message:
+                raise ValueError("Response message must have 'result'")
         
         elif msg_type == MessageType.ERROR.value:
-            if 'error_message' not in data:
-                raise ValueError("ERROR sin campo 'error_message'")
-        
-        else:
-            raise ValueError(f"Tipo de mensaje desconocido: {msg_type}")
+            if 'error' not in message:
+                raise ValueError("Error message must have 'error'")
         
         return True

@@ -1,183 +1,190 @@
 """
-Funciones para parsear y extraer información de HTML
+Parser HTML para extraer información estructurada de páginas web
 """
-
 from bs4 import BeautifulSoup
-from typing import Dict, List, Optional
-import logging
 from urllib.parse import urljoin, urlparse
+import logging
 
 logger = logging.getLogger(__name__)
 
 
 class HtmlParser:
-    """Parser de HTML para extraer información estructurada"""
+    """
+    Parser de HTML usando BeautifulSoup
     
-    def __init__(self, html: str, base_url: str):
+    Extrae:
+    - Título y texto
+    - Estructura (headers, elementos)
+    - Links e imágenes
+    - Metadatos (SEO, Open Graph, Twitter Cards)
+    """
+    
+    def __init__(self):
+        self.parser = 'lxml'  # Usar lxml para mejor performance
+    
+    def parse(self, html_content: str, base_url: str) -> dict:
         """
-        Inicializar el parser
+        Parsea contenido HTML y extrae información estructurada
         
         Args:
-            html: Contenido HTML como string
-            base_url: URL base para resolver enlaces relativos
-        """
-        self.html = html
-        self.base_url = base_url
-        self.soup = BeautifulSoup(html, 'html.parser')
-    
-    def extract_title(self) -> str:
-        """
-        Extraer el título de la página
+            html_content: Contenido HTML como string
+            base_url: URL base para resolver links relativos
         
         Returns:
-            Título de la página o mensaje si no existe
+            Diccionario con datos extraídos
         """
-        title_tag = self.soup.find('title')
-        if title_tag:
-            return title_tag.get_text(strip=True)
+        try:
+            soup = BeautifulSoup(html_content, self.parser)
+            
+            return {
+                'basic': self._extract_basic_info(soup),
+                'structure': self._extract_structure(soup),
+                'links': self._extract_links(soup, base_url),
+                'images': self._extract_images(soup, base_url),
+                'metadata': self._extract_metadata(soup)
+            }
         
-        # Intentar con og:title
-        og_title = self.soup.find('meta', property='og:title')
-        if og_title and og_title.get('content'):
-            return og_title['content']
-        
-        return 'Sin título'
+        except Exception as e:
+            logger.error(f"Error parseando HTML: {e}")
+            return {
+                'error': str(e),
+                'basic': {},
+                'structure': {},
+                'links': [],
+                'images': [],
+                'metadata': {}
+            }
     
-    def extract_headers(self) -> Dict[str, int]:
-        """
-        Extraer la estructura de headers (H1-H6)
+    def _extract_basic_info(self, soup: BeautifulSoup) -> dict:
+        """Extrae información básica de la página"""
+        try:
+            title = soup.find('title')
+            title_text = title.get_text(strip=True) if title else 'Sin título'
+            
+            # Extraer todo el texto visible
+            for script in soup(['script', 'style']):
+                script.decompose()
+            
+            text = soup.get_text(separator=' ', strip=True)
+            words = text.split()
+            
+            return {
+                'title': title_text,
+                'text_preview': ' '.join(words[:50]),  # Primeras 50 palabras
+                'word_count': len(words)
+            }
         
-        Returns:
-            Diccionario con conteo de cada tipo de header
-        """
-        headers = {}
-        for i in range(1, 7):
-            tag = f'h{i}'
-            count = len(self.soup.find_all(tag))
-            headers[tag] = count
-        
-        return headers
+        except Exception as e:
+            logger.error(f"Error extrayendo info básica: {e}")
+            return {}
     
-    def extract_headers_content(self) -> Dict[str, List[str]]:
-        """
-        Extraer el contenido de los headers
+    def _extract_structure(self, soup: BeautifulSoup) -> dict:
+        """Extrae estructura de la página"""
+        try:
+            return {
+                'headers': {
+                    'h1': len(soup.find_all('h1')),
+                    'h2': len(soup.find_all('h2')),
+                    'h3': len(soup.find_all('h3')),
+                    'h4': len(soup.find_all('h4')),
+                    'h5': len(soup.find_all('h5')),
+                    'h6': len(soup.find_all('h6'))
+                },
+                'elements_count': {
+                    'paragraphs': len(soup.find_all('p')),
+                    'links': len(soup.find_all('a')),
+                    'images': len(soup.find_all('img')),
+                    'lists': len(soup.find_all(['ul', 'ol'])),
+                    'tables': len(soup.find_all('table'))
+                }
+            }
         
-        Returns:
-            Diccionario con listas del contenido de cada header
-        """
-        headers_content = {}
-        for i in range(1, 7):
-            tag = f'h{i}'
-            headers = self.soup.find_all(tag)
-            headers_content[tag] = [h.get_text(strip=True) for h in headers]
-        
-        return headers_content
+        except Exception as e:
+            logger.error(f"Error extrayendo estructura: {e}")
+            return {}
     
-    def extract_links(self, limit: int = 50) -> List[str]:
-        """
-        Extraer todos los enlaces de la página
-        
-        Args:
-            limit: Número máximo de enlaces a retornar
+    def _extract_links(self, soup: BeautifulSoup, base_url: str) -> list:
+        """Extrae todos los links de la página"""
+        try:
+            links = []
             
-        Returns:
-            Lista de URLs absolutas únicas
-        """
-        links = []
-        
-        for a_tag in self.soup.find_all('a', href=True):
-            href = a_tag['href']
+            for link in soup.find_all('a', href=True):
+                href = link.get('href', '').strip()
+                
+                if not href or href.startswith(('#', 'javascript:', 'mailto:')):
+                    continue
+                
+                # Convertir links relativos a absolutos
+                absolute_url = urljoin(base_url, href)
+                
+                links.append({
+                    'url': absolute_url,
+                    'text': link.get_text(strip=True)[:100]  # Max 100 chars
+                })
             
-            # Resolver URL relativa a absoluta
-            absolute_url = urljoin(self.base_url, href)
-            
-            # Validar que sea una URL HTTP/HTTPS
-            parsed = urlparse(absolute_url)
-            if parsed.scheme in ('http', 'https'):
-                links.append(absolute_url)
+            return links[:100]  # Limitar a 100 links
         
-        # Eliminar duplicados manteniendo el orden
-        seen = set()
-        unique_links = []
-        for link in links:
-            if link not in seen:
-                seen.add(link)
-                unique_links.append(link)
-        
-        return unique_links[:limit]
+        except Exception as e:
+            logger.error(f"Error extrayendo links: {e}")
+            return []
     
-    def extract_images(self, limit: int = 20) -> List[Dict[str, str]]:
-        """
-        Extraer información de imágenes
+    def _extract_images(self, soup: BeautifulSoup, base_url: str) -> list:
+        """Extrae información de imágenes"""
+        try:
+            images = []
+            
+            for img in soup.find_all('img'):
+                src = img.get('src', '').strip()
+                
+                if not src:
+                    continue
+                
+                # Convertir a URL absoluta
+                absolute_url = urljoin(base_url, src)
+                
+                images.append({
+                    'url': absolute_url,
+                    'alt': img.get('alt', ''),
+                    'title': img.get('title', '')
+                })
+            
+            return images[:50]  # Limitar a 50 imágenes
         
-        Args:
-            limit: Número máximo de imágenes
-            
-        Returns:
-            Lista de diccionarios con info de cada imagen
-        """
-        images = []
-        
-        for img_tag in self.soup.find_all('img'):
-            src = img_tag.get('src')
-            if not src:
-                continue
-            
-            # Resolver URL absoluta
-            absolute_url = urljoin(self.base_url, src)
-            
-            image_info = {
-                'url': absolute_url,
-                'alt': img_tag.get('alt', ''),
-                'title': img_tag.get('title', ''),
-                'width': img_tag.get('width', ''),
-                'height': img_tag.get('height', '')
+        except Exception as e:
+            logger.error(f"Error extrayendo imágenes: {e}")
+            return []
+    
+    def _extract_metadata(self, soup: BeautifulSoup) -> dict:
+        """Extrae metadatos (meta tags, Open Graph, Twitter Cards)"""
+        try:
+            metadata = {
+                'basic': {},
+                'open_graph': {},
+                'twitter': {}
             }
             
-            images.append(image_info)
+            # Meta tags básicos
+            for meta in soup.find_all('meta'):
+                name = meta.get('name', '').lower()
+                property_attr = meta.get('property', '').lower()
+                content = meta.get('content', '')
+                
+                # Meta tags básicos
+                if name in ['description', 'keywords', 'author', 'viewport']:
+                    metadata['basic'][name] = content
+                
+                # Open Graph
+                if property_attr.startswith('og:'):
+                    key = property_attr.replace('og:', '')
+                    metadata['open_graph'][key] = content
+                
+                # Twitter Cards
+                if name.startswith('twitter:'):
+                    key = name.replace('twitter:', '')
+                    metadata['twitter'][key] = content
             
-            if len(images) >= limit:
-                break
+            return metadata
         
-        return images
-    
-    def count_elements(self) -> Dict[str, int]:
-        """
-        Contar diferentes elementos HTML
-        
-        Returns:
-            Diccionario con conteos
-        """
-        return {
-            'paragraphs': len(self.soup.find_all('p')),
-            'images': len(self.soup.find_all('img')),
-            'links': len(self.soup.find_all('a')),
-            'lists': len(self.soup.find_all(['ul', 'ol'])),
-            'tables': len(self.soup.find_all('table')),
-            'forms': len(self.soup.find_all('form')),
-            'divs': len(self.soup.find_all('div')),
-            'spans': len(self.soup.find_all('span'))
-        }
-    
-    def extract_text_content(self, max_length: int = 500) -> str:
-        """
-        Extraer el texto principal de la página
-        
-        Args:
-            max_length: Longitud máxima del texto
-            
-        Returns:
-            Texto extraído
-        """
-        # Eliminar scripts y estilos
-        for script in self.soup(['script', 'style']):
-            script.decompose()
-        
-        # Obtener texto
-        text = self.soup.get_text(separator=' ', strip=True)
-        
-        # Limitar longitud
-        if len(text) > max_length:
-            text = text[:max_length] + '...'
-        
-        return text
+        except Exception as e:
+            logger.error(f"Error extrayendo metadata: {e}")
+            return {}

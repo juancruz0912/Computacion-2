@@ -14,6 +14,10 @@ from processor.screenshot import ScreenshotGenerator
 from processor.performance import PerformanceAnalyzer
 from processor.image_processor import ImageProcessor
 
+# ✅ IMPORTAR NUEVOS ANALIZADORES (BONUS TRACK 3)
+from processor.technology_detector import TechnologyDetector
+from processor.seo_analyzer import SEOAnalyzer
+
 # Configurar logging
 logging.basicConfig(
     level=logging.INFO,
@@ -40,10 +44,7 @@ def process_screenshot_task(data):
     logger.info(f"[Proceso {mp.current_process().name}] Generando screenshot de {url}")
     
     try:
-        # Crear generador de screenshots
         generator = ScreenshotGenerator(headless=True)
-        
-        # Capturar screenshot
         result = generator.capture(url)
         
         logger.info(f"[Proceso {mp.current_process().name}] Screenshot completado")
@@ -71,10 +72,7 @@ def process_performance_task(data):
     logger.info(f"[Proceso {mp.current_process().name}] Analizando rendimiento de {url}")
     
     try:
-        # Crear analizador de rendimiento
         analyzer = PerformanceAnalyzer(headless=True)
-        
-        # Analizar
         result = analyzer.analyze(url)
         
         logger.info(f"[Proceso {mp.current_process().name}] Análisis completado")
@@ -104,16 +102,13 @@ def process_images_task(data):
     logger.info(f"[Proceso {mp.current_process().name}] Procesando {len(image_urls)} imágenes de {url}")
     
     try:
-        # Nota: ImageProcessor es asíncrono, pero lo corremos en un event loop
         import asyncio
         
         processor = ImageProcessor()
         
-        # Crear un event loop para este proceso
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
-        # Ejecutar el procesamiento asíncrono
         result = loop.run_until_complete(
             processor.process_images(image_urls[:10], create_thumbnails=True)
         )
@@ -121,6 +116,75 @@ def process_images_task(data):
         loop.close()
         
         logger.info(f"[Proceso {mp.current_process().name}] Procesamiento completado")
+        return result
+    
+    except Exception as e:
+        logger.error(f"[Proceso {mp.current_process().name}] Error: {e}")
+        return {
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        }
+
+
+# ✅ NUEVA FUNCIÓN: Detectar Tecnologías
+def process_technologies_task(data):
+    """
+    Detectar tecnologías web utilizadas
+    
+    Args:
+        data: dict con 'url', 'html_content' y 'headers'
+        
+    Returns:
+        dict con tecnologías detectadas
+    """
+    url = data.get('url', '')
+    html_content = data.get('params', {}).get('html_content', '')
+    headers = data.get('params', {}).get('headers', {})
+    
+    logger.info(f"[Proceso {mp.current_process().name}] Detectando tecnologías de {url}")
+    
+    try:
+        detector = TechnologyDetector()
+        result = detector.analyze(html_content, headers)
+        
+        logger.info(
+            f"[Proceso {mp.current_process().name}] "
+            f"Detección completada: {result.get('summary', {}).get('total_technologies', 0)} tecnologías"
+        )
+        return result
+    
+    except Exception as e:
+        logger.error(f"[Proceso {mp.current_process().name}] Error: {e}")
+        return {
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        }
+
+
+# ✅ NUEVA FUNCIÓN: Analizar SEO
+def process_seo_task(data):
+    """
+    Analizar SEO de la página
+    
+    Args:
+        data: dict con 'url' y 'html_content'
+        
+    Returns:
+        dict con análisis de SEO
+    """
+    url = data.get('url', '')
+    html_content = data.get('params', {}).get('html_content', '')
+    
+    logger.info(f"[Proceso {mp.current_process().name}] Analizando SEO de {url}")
+    
+    try:
+        analyzer = SEOAnalyzer()
+        result = analyzer.analyze(html_content, url)
+        
+        logger.info(
+            f"[Proceso {mp.current_process().name}] "
+            f"Análisis completado: Score {result.get('score', 0)}/100 (Grade: {result.get('grade', 'N/A')})"
+        )
         return result
     
     except Exception as e:
@@ -143,7 +207,7 @@ class ProcessingRequestHandler(socketserver.BaseRequestHandler):
         try:
             logger.info(f"📨 Nueva conexión desde {self.client_address}")
             
-            # Recibir mensaje del cliente (Servidor A) usando el protocolo unificado
+            # Recibir mensaje del cliente usando el protocolo unificado
             request_data = Protocol.decode_message(self.request)
             
             if not request_data:
@@ -174,9 +238,7 @@ class ProcessingRequestHandler(socketserver.BaseRequestHandler):
         
         except Exception as e:
             logger.error(f"❌ Error manejando request: {e}")
-            error_response = Protocol.create_error(
-                message=str(e)
-            )
+            error_response = Protocol.create_error(message=str(e))
             try:
                 self.request.sendall(Protocol.encode_message(error_response))
             except:
@@ -212,28 +274,45 @@ class ProcessingRequestHandler(socketserver.BaseRequestHandler):
                 logger.info(f"🎯 Procesando tarea IMAGES para {url}")
                 result = pool.apply(process_images_task, (request_data,))
             
+            # ✅ NUEVAS TAREAS (BONUS TRACK 3)
+            elif task_type == 'technologies':
+                logger.info(f"🎯 Procesando tarea TECHNOLOGIES para {url}")
+                result = pool.apply(process_technologies_task, (request_data,))
+            
+            elif task_type == 'seo':
+                logger.info(f"🎯 Procesando tarea SEO para {url}")
+                result = pool.apply(process_seo_task, (request_data,))
+            
             elif task_type == TaskType.ALL.value:
-                # Procesar todas las tareas en paralelo
+                # ✅ PROCESAR TODAS LAS TAREAS EN PARALELO (INCLUYENDO NUEVAS)
                 logger.info(f"🔄 Procesando TODAS las tareas para {url}")
                 
-                # Lanzar las tres tareas en paralelo
+                # Lanzar todas las tareas en paralelo
                 screenshot_future = pool.apply_async(process_screenshot_task, (request_data,))
                 performance_future = pool.apply_async(process_performance_task, (request_data,))
                 images_future = pool.apply_async(process_images_task, (request_data,))
+                
+                # ✅ AGREGAR NUEVAS TAREAS AL PROCESAMIENTO PARALELO
+                technologies_future = pool.apply_async(process_technologies_task, (request_data,))
+                seo_future = pool.apply_async(process_seo_task, (request_data,))
                 
                 # Esperar resultados con timeout de 60 segundos
                 try:
                     screenshot_result = screenshot_future.get(timeout=60)
                     performance_result = performance_future.get(timeout=60)
                     images_result = images_future.get(timeout=60)
+                    technologies_result = technologies_future.get(timeout=60)
+                    seo_result = seo_future.get(timeout=60)
                     
                     result = {
                         'screenshot': screenshot_result,
                         'performance': performance_result,
-                        'images': images_result
+                        'images': images_result,
+                        'technologies': technologies_result,  # ✅ NUEVO
+                        'seo': seo_result                      # ✅ NUEVO
                     }
                     
-                    logger.info("✅ Todas las tareas completadas")
+                    logger.info("✅ Todas las tareas completadas (incluyendo análisis avanzados)")
                 
                 except mp.TimeoutError:
                     logger.error("⏱️  Timeout procesando tareas")
@@ -250,8 +329,6 @@ class ProcessingRequestHandler(socketserver.BaseRequestHandler):
         
         except Exception as e:
             logger.error(f"❌ Error procesando tarea {task_type}: {e}")
-            
-            # Crear mensaje de error usando el protocolo
             return Protocol.create_error(
                 message=str(e),
                 task_type=task_type
@@ -267,7 +344,6 @@ class ProcessingServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     Servidor TCP que maneja requests usando threads y procesa tareas con multiprocessing
     """
     
-    # Permitir reutilizar la dirección inmediatamente
     allow_reuse_address = True
     
     def __init__(self, server_address, num_processes=None):
@@ -280,7 +356,6 @@ class ProcessingServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
         """
         super().__init__(server_address, ProcessingRequestHandler)
         
-        # Crear pool de procesos
         if num_processes is None:
             num_processes = mp.cpu_count()
         
@@ -304,13 +379,21 @@ class ProcessingServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 def parse_arguments():
     """Parsear argumentos de línea de comandos"""
     parser = argparse.ArgumentParser(
-        description='Servidor de Procesamiento Distribuido',
+        description='Servidor de Procesamiento Distribuido con Análisis Avanzados',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Ejemplos de uso:
   %(prog)s -i localhost -p 9000
   %(prog)s -i 0.0.0.0 -p 9000 -n 4
   %(prog)s -i :: -p 9000 -n 8
+
+Tareas soportadas:
+  - screenshot     : Captura de pantalla
+  - performance    : Análisis de rendimiento
+  - images         : Procesamiento de imágenes
+  - technologies   : Detección de tecnologías web (NUEVO)
+  - seo            : Análisis de SEO (NUEVO)
+  - all            : Todas las tareas en paralelo
         """
     )
     
@@ -341,7 +424,6 @@ def main():
     """Función principal"""
     args = parse_arguments()
     
-    # Crear y configurar el servidor
     server_address = (args.ip, args.port)
     server = ProcessingServer(server_address, num_processes=args.processes)
     
@@ -351,11 +433,17 @@ def main():
     logger.info(f"📍 Dirección: {args.ip}:{args.port}")
     logger.info(f"⚙️  Procesos en el pool: {server.num_processes}")
     logger.info(f"🖥️  CPUs disponibles: {mp.cpu_count()}")
-    logger.info(f"💡 Presiona Ctrl+C para detener")
+    logger.info(f"\n💡 Tareas soportadas:")
+    logger.info(f"   - screenshot     : Captura de pantalla (Selenium)")
+    logger.info(f"   - performance    : Análisis de rendimiento")
+    logger.info(f"   - images         : Procesamiento de imágenes")
+    logger.info(f"   - technologies   : Detección de tecnologías web ✨ NUEVO")
+    logger.info(f"   - seo            : Análisis de SEO ✨ NUEVO")
+    logger.info(f"   - all            : Todas las tareas en paralelo")
+    logger.info(f"\n💡 Presiona Ctrl+C para detener")
     logger.info("=" * 70)
     
     try:
-        # Iniciar el servidor (bloqueante)
         server.serve_forever()
     except KeyboardInterrupt:
         logger.info("\n🛑 Deteniendo servidor...")
